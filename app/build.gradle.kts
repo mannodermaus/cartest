@@ -1,3 +1,6 @@
+import java.util.Properties
+import kotlin.apply
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
@@ -24,11 +27,19 @@ android {
         compose = true
     }
 
+    signingConfigs {
+        create("platform") {
+            storeFile = file("../aosp-platform.p12")
+            storePassword = "android"
+            keyAlias = "platform"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
-        release {
-            optimization {
-                enable = false
-            }
+        val platformSigning = signingConfigs.findByName("platform")
+        debug {
+            signingConfig = platformSigning!!
         }
     }
     compileOptions {

@@ -1,9 +1,12 @@
 package de.mannodermaus.cartest
 
 import android.car.Car
+import android.car.VehiclePropertyIds
+import android.car.hardware.property.CarPropertyManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.Image
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -33,9 +37,19 @@ class MyActivity : AppCompatActivity() {
 
     @Composable
     private fun MyScreen(modifier: Modifier = Modifier) {
-        // TODO: Accessing CarPropertyManager properties requires permissions
-        //  that cannot be requested by ordinary apps. Check if signing as privileged app works
         val car = rememberCar()
+        LaunchedEffect(car) {
+            val car = car
+            if (car != null) {
+                val manager = car.getCarManager(CarPropertyManager::class.java)
+                try {
+                    val temp = manager.getFloatProperty(VehiclePropertyIds.HVAC_TEMPERATURE_SET, 0x1)
+                    Log.d("cartest", "HVACtemp = $temp")
+                } catch (e: Exception) {
+                    Log.e("cartest", "error = ${e.message}")
+                }
+            }
+        }
 
         Box(
             modifier = modifier,
