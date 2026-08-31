@@ -14,33 +14,46 @@ import android.os.HandlerThread
 import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.ColorUtils
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 class MyActivity : AppCompatActivity() {
@@ -63,29 +76,46 @@ class MyActivity : AppCompatActivity() {
 private fun MyScreen(modifier: Modifier = Modifier) {
     val car by rememberCar()
 
-    Row(
-        modifier = modifier.padding(24.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
-    ) {
-        TemperatureDisplay(
-            modifier = Modifier.fillMaxHeight(),
-            car = car,
-            label = "Left",
-            areaId = VehicleAreaSeat.SEAT_ROW_1_LEFT
+    Box(modifier = modifier) {
+        Image(
+            modifier = Modifier.fillMaxSize(),
+            painter = painterResource(R.drawable.bg),
+            contentDescription = null,
+            contentScale = ContentScale.Crop
         )
 
-        Text(
-            modifier = Modifier.align(Alignment.CenterVertically),
-            text = "HVAC",
-            style = MaterialTheme.typography.headlineLarge
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TemperatureDisplay(
+                modifier = Modifier.fillMaxHeight(),
+                car = car,
+                label = "Left",
+                areaId = VehicleAreaSeat.SEAT_ROW_1_LEFT
+            )
 
-        TemperatureDisplay(
-            modifier = Modifier.fillMaxHeight(),
-            car = car,
-            label = "Right",
-            areaId = VehicleAreaSeat.SEAT_ROW_1_RIGHT
-        )
+            Box(
+                modifier = Modifier.fillMaxHeight(),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    modifier = Modifier.width(240.dp),
+                    painter = painterResource(R.drawable.dm),
+                    contentDescription = "Drivemode Logo"
+                )
+            }
+
+            TemperatureDisplay(
+                modifier = Modifier.fillMaxHeight(),
+                car = car,
+                label = "Right",
+                areaId = VehicleAreaSeat.SEAT_ROW_1_RIGHT
+            )
+        }
     }
 }
 
@@ -103,42 +133,37 @@ private fun TemperatureDisplay(
         areaId = VehicleAreaType.VEHICLE_AREA_TYPE_GLOBAL
     )
 
-    val temperaturePair by carPropertyManager.collectPropertyAsState<Float, Pair<Float, Float>>(
+    val temperatureData by carPropertyManager.collectPropertyAsState<Float, TemperatureData>(
         propertyId = VehiclePropertyIds.HVAC_TEMPERATURE_SET,
         areaId = areaId,
         key = displayUnit
     ) { config, value ->
-        // The underlying car property always returns temperature in Celsius.
+        // The car property always returns temperature in Celsius.
         // If displaying in Fahrenheit, convert the value using the car property's config array
         val displayValue = when (displayUnit) {
-            VehicleUnit.CELSIUS -> value
-            VehicleUnit.FAHRENHEIT -> value.toFahrenheit(config.configArray)
-            else -> 0f
-        }
-
-        // The config array also describes the min and max temperature values.
-        // Derive a fraction from those
-        val valueFraction = value.lerpIn(
-            min = config.configArray[0] / 10f,
-            max = config.configArray[1] / 10f
-        )
-
-        displayValue to valueFraction
-    }
-
-    val temperature = temperaturePair?.first
-    val temperatureFraction = temperaturePair?.second ?: 0f
-
-    val formattedTemperature = remember(temperature, displayUnit) {
-        when (displayUnit) {
-            VehicleUnit.CELSIUS -> "$temperature °C"
-            VehicleUnit.FAHRENHEIT -> "$temperature °F"
+            VehicleUnit.CELSIUS -> "$value °C"
+            VehicleUnit.FAHRENHEIT -> "${value.toFahrenheit(config.configArray)} °F"
             else -> "?"
         }
+
+        TemperatureData(
+            minValue = config.configArray[0] / 10f,
+            maxValue = config.configArray[1] / 10f,
+            increment = config.configArray[2] / 10f,
+            rawValue = value,
+            formattedValue = displayValue
+        )
     }
 
-    val displayAlpha by animateFloatAsState(if (temperature != null) 1f else 0f)
-    val backgroundColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    val formattedTemperature = temperatureData?.formattedValue
+    val temperatureFraction = remember(temperatureData) {
+        temperatureData
+            ?.let { it.rawValue.lerpIn(it.minValue, it.maxValue) }
+            ?: 0f
+    }
+
+    val displayAlpha by animateFloatAsState(if (formattedTemperature != null) 1f else 0f)
+    val backgroundColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.15f)
     val foregroundColor1 = Color.Green
     val foregroundColor2 = Color.Red
     // The hotter the HVAC, the more pronounced the background gradient
@@ -157,25 +182,55 @@ private fun TemperatureDisplay(
         )
     }
 
+    val coroutineScope = rememberCoroutineScope()
+    val rotationAnimatable = remember { Animatable(0f) }
+
     Column(
         modifier = modifier
             .alpha(displayAlpha)
-            .background(
-                brush = backgroundBrush,
-                shape = MaterialTheme.shapes.medium
-            )
+            .background(backgroundBrush, MaterialTheme.shapes.large)
+            .pointerInput(label) {
+                detectTapGestures { offset ->
+                    val data = temperatureData ?: return@detectTapGestures
+
+                    // Tapping the right half of the display shall increase the temperature,
+                    // tapping the left half shall decrease it
+                    val isRightHalf = offset.x >= size.width / 2f
+                    val sign = if (isRightHalf) 1f else -1f
+
+                    val newTemperature =
+                        (data.rawValue + data.increment * sign)
+                            .coerceIn(data.minValue, data.maxValue)
+
+                    carPropertyManager.setFloatProperty(
+                        VehiclePropertyIds.HVAC_TEMPERATURE_SET,
+                        areaId,
+                        newTemperature
+                    )
+
+                    coroutineScope.launch {
+                        rotationAnimatable.snapTo(30 * sign)
+                        rotationAnimatable.animateTo(0f, tween(200))
+                    }
+                }
+            }
+            .graphicsLayer {
+                this.rotationY = rotationAnimatable.value
+            }
             .padding(64.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.headlineLarge
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.inverseOnSurface,
         )
 
         Text(
-            text = formattedTemperature,
+            text = formattedTemperature.orEmpty(),
             style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.inverseOnSurface,
             autoSize = TextAutoSize.StepBased()
         )
     }
@@ -205,6 +260,15 @@ private fun rememberCar(): State<Car?> {
 
     return carState
 }
+
+@Stable
+private data class TemperatureData(
+    val minValue: Float,
+    val maxValue: Float,
+    val increment: Float,
+    val rawValue: Float,
+    val formattedValue: String
+)
 
 @Composable
 private inline fun <reified T> CarPropertyManager.collectPropertyAsState(
